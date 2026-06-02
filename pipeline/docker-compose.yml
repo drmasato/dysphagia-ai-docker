@@ -1,0 +1,114 @@
+services:
+
+  # nnU-Net v2 梗塞巣セグメンテーション（GPU）
+  nnunet:
+    build:
+      context: ../nnunet
+      dockerfile: Dockerfile
+    image: dysphagia-nnunet:latest
+    container_name: dysphagia-nnunet
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - nnUNet_raw=/data/nnUNet_raw
+      - nnUNet_preprocessed=/data/nnUNet_preprocessed
+      - nnUNet_results=/data/nnUNet_results
+    volumes:
+      - ../data/input:/input:ro
+      - ../data/output/nnunet:/output
+      - nnunet_models:/data/nnUNet_results
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: "no"
+    profiles: ["gpu", "full"]
+
+  # TotalSegmentator 嚥下筋定量化（GPU）
+  totalseg:
+    build:
+      context: ../totalsegmentator
+      dockerfile: Dockerfile
+    image: dysphagia-totalseg:latest
+    container_name: dysphagia-totalseg
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - TOTALSEG_WEIGHTS_PATH=/workspace/weights
+    volumes:
+      - ../data/input:/input:ro
+      - ../data/output/totalseg:/output
+      - totalseg_weights:/workspace/weights
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: "no"
+    profiles: ["gpu", "full"]
+
+  # FSL BIANCA WMH定量化（CPU）
+  bianca:
+    build:
+      context: ../fsl-bianca
+      dockerfile: Dockerfile
+    image: dysphagia-bianca:latest
+    container_name: dysphagia-bianca
+    volumes:
+      - ../data/input:/input:ro
+      - ../data/output/bianca:/output
+    restart: "no"
+    profiles: ["cpu", "full"]
+
+  # XGBoost 予測APIサーバー（CPU）
+  predictor:
+    build:
+      context: ../xgboost-shap
+      dockerfile: Dockerfile
+    image: dysphagia-predictor:latest
+    container_name: dysphagia-predictor
+    environment:
+      - MODEL_PATH=/workspace/models/dysphagia_xgb_model.joblib
+      - RESULTS_DIR=/workspace/data/output
+      - DATA_INPUT_DIR=/workspace/data/input
+    volumes:
+      - ../xgboost-shap/models:/workspace/models
+      - ../data:/workspace/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    profiles: ["cpu", "gpu", "full", "api"]
+
+  # 統合パイプラインオーケストレーター（バッチ処理用）
+  pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile.pipeline
+    image: dysphagia-pipeline:latest
+    container_name: dysphagia-pipeline
+    environment:
+      - PREDICTOR_URL=http://predictor:8000
+    volumes:
+      - ../data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      predictor:
+        condition: service_healthy
+    profiles: ["batch"]
+
+volumes:
+  nnunet_models:
+  totalseg_weights:
+
+networks:
+  default:
+    name: dysphagia-net

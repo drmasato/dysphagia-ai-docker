@@ -1,0 +1,30 @@
+# モデル・データ（大容量）
+xgboost-shap/models/
+data/
+*.joblib
+*.pkl
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker ビルドキャッシュ
+.dockerignore
+
+# ログ・一時ファイル
+*.log
+/tmp/
