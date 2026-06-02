@@ -1,5 +1,10 @@
 # 頭部CT × 嚥下機能 画像AI自動定量パイプライン
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/)
+[![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](https://www.docker.com/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.109-green.svg)](https://fastapi.tiangolo.com/)
+
 脳卒中急性期患者を対象に、頭部CT所見から嚥下障害リスクを自動定量化するAIパイプライン。
 
 > **規制上の注意**: 本システムは研究用途専用です。臨床診断への直接使用には薬機法上のSaMD承認が必要です。
