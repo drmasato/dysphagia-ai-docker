@@ -26,12 +26,14 @@ RUN pip install --no-cache-dir \
     numpy==1.26.4 \
     pandas==2.2.0 \
     matplotlib==3.8.2 \
-    joblib==1.3.2
+    joblib==1.3.2 \
+    nibabel==5.2.0 \
+    SimpleITK==2.3.1
 
 RUN mkdir -p /workspace/models /workspace/data /workspace/plots
 
 WORKDIR /workspace
-COPY train_model.py predict.py api_server.py ./
+COPY train_model.py predict.py api_server.py visualize.py ./
 
 EXPOSE 8000
 CMD ["uvicorn", "api_server:app", "--host", "0.0.0.0", "--port", "8000"]

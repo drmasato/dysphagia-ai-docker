@@ -5,6 +5,7 @@ FastAPI 嚥下回復予測REST APIサーバー
 - GET  /pipeline/status  : 全Dockerコンテナの稼働状況
 - POST /pipeline/run     : 統合パイプライン実行トリガー
 - GET  /results/{id}     : 保存済みレポート取得
+- GET  /visualize/{id}   : CT + 梗塞巣・筋肉マスクのHTML可視化レポート
 - GET  /features         : 特徴量定義一覧
 - GET  /health           : ヘルスチェック
 """
@@ -21,7 +22,7 @@ import joblib
 import numpy as np
 import shap
 from fastapi import BackgroundTasks, FastAPI, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
 MODEL_PATH      = os.environ.get("MODEL_PATH",      "/workspace/models/dysphagia_xgb_model.joblib")
@@ -666,6 +667,112 @@ async def get_results(patient_id: str):
         raise HTTPException(status_code=404, detail=f"レポートが見つかりません: {patient_id}")
     with open(report_path, encoding="utf-8") as f:
         return json.load(f)
+
+
+@app.get(
+    "/visualize/{patient_id}",
+    response_class=HTMLResponse,
+    tags=["可視化"],
+    summary="CT + 梗塞巣・筋肉マスクのHTML可視化レポート",
+)
+async def visualize(
+    patient_id: str,
+    wc: float = 40,
+    ww: float = 80,
+):
+    """
+    CT画像と利用可能な全セグメンテーションマスクを
+    軸位・矢状・冠状の3断面 + 軸位モンタージュでHTML表示する。
+
+    - **wc**: Window Center（脳=40, 骨=400）
+    - **ww**: Window Width（脳=80, 骨=1500）
+    """
+    from visualize import generate_html_report
+
+    # CT ファイルを探す
+    ct_candidates = [
+        os.path.join(DATA_INPUT_DIR, f"{patient_id}_CT.nii.gz"),
+        os.path.join(DATA_INPUT_DIR, f"{patient_id}_CT_thin.nii.gz"),
+        os.path.join(DATA_INPUT_DIR, f"{patient_id}_CT_plain.nii.gz"),
+    ]
+    ct_path = next((p for p in ct_candidates if os.path.exists(p)), None)
+
+    # 入力ファイル直接指定にも対応（患者IDがファイル名の場合）
+    if ct_path is None:
+        direct = os.path.join(DATA_INPUT_DIR, patient_id)
+        if os.path.exists(direct):
+            ct_path = direct
+
+    if ct_path is None:
+        # 利用可能なファイル一覧を返す
+        available = os.listdir(DATA_INPUT_DIR) if os.path.exists(DATA_INPUT_DIR) else []
+        raise HTTPException(
+            status_code=404,
+            detail=f"CT NIfTI が見つかりません: {patient_id}  利用可能: {available}"
+        )
+
+    # セグメンテーションマスクを収集
+    mask_paths = {}
+    seg_search_dirs = [
+        os.path.join(RESULTS_DIR, "totalseg", patient_id, "segmentation"),
+        os.path.join(RESULTS_DIR, "totalseg", f"{patient_id}_thin", "segmentation"),
+        os.path.join(RESULTS_DIR, "totalseg", f"{patient_id}_baked", "segmentation"),
+        os.path.join(RESULTS_DIR, "nnunet", patient_id),
+        os.path.join(RESULTS_DIR, "bianca", patient_id),
+    ]
+    mask_names_of_interest = list(visualize_module_colors())
+
+    for seg_dir in seg_search_dirs:
+        if not os.path.exists(seg_dir):
+            continue
+        for mask_name in mask_names_of_interest:
+            mask_file = os.path.join(seg_dir, f"{mask_name}.nii.gz")
+            if os.path.exists(mask_file) and mask_name not in mask_paths:
+                mask_paths[mask_name] = mask_file
+        # nnU-Net出力（単一ファイル）
+        for fname in os.listdir(seg_dir):
+            if fname.endswith(".nii.gz") and fname not in mask_paths:
+                mask_paths[fname.replace(".nii.gz", "")] = os.path.join(seg_dir, fname)
+
+    # 臨床サマリー（最終レポートがあれば）
+    clinical_summary = {}
+    report_path = os.path.join(RESULTS_DIR, patient_id, f"{patient_id}_final_report.json")
+    if os.path.exists(report_path):
+        with open(report_path) as f:
+            report = json.load(f)
+        pred = report.get("prediction", {})
+        if pred.get("recovery_probability") is not None:
+            clinical_summary["嚥下回復確率"] = f"{pred['recovery_probability']*100:.1f}%"
+        if pred.get("risk_level"):
+            clinical_summary["リスク分類"] = pred["risk_level"]
+        if pred.get("recommended_action"):
+            clinical_summary["推奨アクション"] = pred["recommended_action"]
+        imq = report.get("imaging_quantification", {})
+        ms = imq.get("swallowing_muscles", {})
+        if ms.get("tongue_csa_cm2"):
+            clinical_summary["舌筋断面積"] = f"{ms['tongue_csa_cm2']} cm²"
+
+    html = generate_html_report(
+        ct_path=ct_path,
+        mask_paths=mask_paths,
+        patient_id=patient_id,
+        clinical_summary=clinical_summary,
+        wc=wc,
+        ww=ww,
+    )
+    return HTMLResponse(content=html)
+
+
+def visualize_module_colors() -> dict:
+    """visualize.py の MASK_COLORS キーを返す（循環参照回避）。"""
+    return {
+        "infarct", "intracerebral_hemorrhage",
+        "tongue", "superior_pharyngeal_constrictor",
+        "middle_pharyngeal_constrictor", "inferior_pharyngeal_constrictor",
+        "masseter_left", "masseter_right",
+        "sternocleidomastoid_left", "sternocleidomastoid_right",
+        "brain",
+    }
 
 
 @app.get(
