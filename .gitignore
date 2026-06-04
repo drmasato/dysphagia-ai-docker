@@ -4,6 +4,10 @@ data/
 *.joblib
 *.pkl
 
+# TotalSegmentatorライセンス（公開禁止）
+totalsegmentator/config.json
+totalseg_config/
+
 # Python
 __pycache__/
 *.pyc

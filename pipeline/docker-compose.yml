@@ -40,6 +40,7 @@ services:
       - ../data/input:/input:ro
       - ../data/output/totalseg:/output
       - totalseg_weights:/workspace/weights
+      - ../totalseg_config:/root/.totalsegmentator
     deploy:
       resources:
         reservations:

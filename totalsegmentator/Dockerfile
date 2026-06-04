@@ -15,9 +15,12 @@ RUN pip install --no-cache-dir \
     scipy==1.12.0 \
     pandas==2.2.0
 
-RUN mkdir -p /input /output /workspace
+RUN mkdir -p /input /output /workspace /root/.totalsegmentator
 
 WORKDIR /workspace
 COPY quantify_muscles.py .
+# ライセンス設定ファイルをイメージに焼き込む
+# （ビルド時にライセンスが存在する場合のみコピー）
+COPY --chown=root:root config.json /root/.totalsegmentator/config.json
 
 CMD ["python3", "quantify_muscles.py", "--help"]
