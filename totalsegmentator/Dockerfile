@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir \
-    TotalSegmentator==2.2.1 \
+    TotalSegmentator==2.13.0 \
     SimpleITK==2.3.1 \
     pydicom>=3.0.0 \
     nibabel==5.2.0 \
